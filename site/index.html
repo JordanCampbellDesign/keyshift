@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Keyshift: change the key and speed of any song in Chrome</title>
+<meta name="description" content="Keyshift is a free Chrome extension that changes the pitch and tempo of any tab's audio, loops a section, and splits songs into vocals, drums, bass, and other on your computer.">
+<meta property="og:title" content="Keyshift for Chrome">
+<meta property="og:description" content="Change the key and speed of any song in your browser, loop the hard part, and mute the vocals. Free and open source.">
+<meta property="og:image" content="https://keyshift-extension.vercel.app/assets/og.png">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#0d0d1a">
+<link rel="canonical" href="https://keyshift-extension.vercel.app/">
+<link rel="icon" href="/assets/icon.png">
+<link rel="apple-touch-icon" href="/assets/icon.png">
+<style>
+:root {
+  color-scheme: dark;
+  --night: #0d0d1a;
+  --night-2: #151530;
+  --night-3: #1f1f40;
+  --line: #2c2c55;
+  --text: #eeeef4;
+  --muted: #b0b0cc;
+  --dim: #8888a8;
+  --violet: #9b82fc;
+  --violet-2: #b5a3ff;
+  --violet-3: #7c5cfc;
+  --green: #34d399;
+  --radius: 14px;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { transition: none !important; animation: none !important; } }
+body {
+  margin: 0; background: var(--night); color: var(--text);
+  font: 17px/1.6 var(--font); -webkit-font-smoothing: antialiased;
+  background-image: radial-gradient(70% 45% at 50% -5%, rgba(155,130,252,.20), transparent 70%);
+  background-repeat: no-repeat;
+}
+a { color: var(--violet-2); }
+a:focus-visible, button:focus-visible, input:focus-visible, code:focus-visible, summary:focus-visible { outline: 2px solid var(--violet-2); outline-offset: 3px; border-radius: 6px; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+@media (max-width: 480px) { .wrap { padding: 0 16px; } }
+.skip { position: absolute; left: -999px; top: 8px; background: var(--violet); color: #120d2b; padding: 8px 14px; border-radius: 8px; z-index: 10; }
+.skip:focus { left: 8px; }
+
+/* Header */
+header { position: sticky; top: 0; z-index: 5; background: rgba(13,13,26,.78); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-bottom: 1px solid rgba(44,44,85,.6); }
+.bar { display: flex; align-items: center; justify-content: space-between; height: 64px; gap: 16px; }
+.brand { display: flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; font-weight: 700; letter-spacing: -.01em; font-size: 18px; }
+.brand img { width: 30px; height: 30px; border-radius: 8px; }
+.nav { display: flex; gap: 6px; align-items: center; }
+.nav a { color: var(--muted); text-decoration: none; font-size: 15px; padding: 8px 10px; border-radius: 8px; }
+.nav a:hover { color: var(--text); background: var(--night-3); }
+.nav .btn { color: #120d2b; }
+@media (max-width: 720px) { .nav a:not(.btn) { display: none; } }
+
+/* Buttons */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 24px; border-radius: 999px; font: 600 16px/1 var(--font); text-decoration: none; border: 0; cursor: pointer; transition: background .15s, transform .15s var(--ease-out); }
+.btn:active { transform: scale(.97); }
+.btn.primary { background: var(--violet); color: #120d2b; }
+.btn.primary:hover { background: var(--violet-2); }
+.btn.ghost { background: transparent; color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
+.btn.ghost:hover { background: var(--night-3); }
+.btn.small { min-height: 38px; padding: 0 16px; font-size: 14px; }
+
+/* Hero */
+.hero { display: grid; grid-template-columns: 1.15fr .85fr; gap: 48px; align-items: center; padding-top: 72px; padding-bottom: 56px; }
+@media (max-width: 880px) { .hero { grid-template-columns: 1fr; padding-top: 48px; gap: 40px; } }
+.eyebrow { display: inline-block; color: var(--violet-2); font-size: 14px; font-weight: 600; letter-spacing: .02em; background: rgba(155,130,252,.12); border: 1px solid rgba(155,130,252,.28); padding: 4px 12px; border-radius: 999px; margin: 0 0 18px; }
+h1 { font-size: clamp(36px, 6vw, 60px); line-height: 1.05; letter-spacing: -.035em; margin: 0 0 18px; }
+.lede { font-size: clamp(18px, 2.2vw, 20px); color: var(--muted); margin: 0 0 28px; max-width: 34em; }
+.cta-row { display: flex; gap: 12px; flex-wrap: wrap; }
+.meta { color: var(--dim); font-size: 14px; margin: 16px 0 0; }
+.shot { position: relative; justify-self: center; }
+.shot img { display: block; width: min(340px, 100%); height: auto; border-radius: 22px; border: 1px solid var(--line); box-shadow: 0 30px 80px -20px rgba(124,92,252,.45), 0 10px 30px rgba(0,0,0,.5); }
+
+/* Sections */
+section { padding: 64px 0; }
+h2 { font-size: clamp(28px, 4vw, 38px); letter-spacing: -.025em; line-height: 1.15; margin: 0 0 12px; }
+.sub { color: var(--muted); margin: 0 0 32px; max-width: 40em; }
+.card { background: var(--night-2); border: 1px solid var(--line); border-radius: var(--radius); }
+
+/* Demo */
+.demo { padding: 28px; display: grid; grid-template-columns: auto 1fr; gap: 28px; align-items: center; }
+@media (max-width: 720px) { .demo { grid-template-columns: 1fr; padding: 20px; } }
+.play { width: 88px; height: 88px; border-radius: 50%; border: 0; cursor: pointer; background: linear-gradient(135deg, var(--violet-2), var(--violet-3)); color: #120d2b; display: grid; place-items: center; box-shadow: 0 10px 30px -8px rgba(124,92,252,.7); transition: transform .15s var(--ease-out); justify-self: center; }
+.play:active { transform: scale(.95); }
+.play svg { width: 34px; height: 34px; }
+.controls { display: grid; gap: 18px; }
+.ctl { display: grid; grid-template-columns: 76px 1fr 64px; align-items: center; gap: 14px; }
+.ctl label { color: var(--muted); font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+.ctl output { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 28px; background: transparent; margin: 0; }
+input[type=range]::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--violet) var(--p, 50%), var(--night-3) var(--p, 50%)); }
+input[type=range]::-moz-range-track { height: 6px; border-radius: 3px; background: var(--night-3); }
+input[type=range]::-moz-range-progress { height: 6px; border-radius: 3px; background: var(--violet); }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; border-radius: 50%; background: var(--violet-2); margin-top: -8px; box-shadow: 0 0 0 5px rgba(155,130,252,.2); }
+input[type=range]::-moz-range-thumb { width: 22px; height: 22px; border: 0; border-radius: 50%; background: var(--violet-2); box-shadow: 0 0 0 5px rgba(155,130,252,.2); }
+.stems { display: flex; gap: 8px; flex-wrap: wrap; }
+.stem { min-height: 40px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--line); background: var(--night-3); color: var(--dim); font: 600 14px/1 var(--font); cursor: pointer; }
+.stem[aria-pressed=true] { background: var(--violet); border-color: var(--violet); color: #120d2b; }
+.hint { color: var(--dim); font-size: 14px; margin: 0; min-height: 1.6em; }
+
+/* Features */
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.feature { padding: 24px; }
+.feature .ico { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: rgba(155,130,252,.14); color: var(--violet-2); margin-bottom: 14px; }
+.feature h3 { margin: 0 0 6px; font-size: 18px; letter-spacing: -.01em; }
+.feature p { margin: 0; color: var(--muted); font-size: 16px; }
+
+/* Install */
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; counter-reset: s; }
+.steps li { counter-increment: s; display: grid; grid-template-columns: 40px 1fr; gap: 16px; padding: 20px; align-items: start; }
+.steps li::before { content: counter(s); width: 32px; height: 32px; border-radius: 50%; background: var(--violet); color: #120d2b; font-weight: 700; display: grid; place-items: center; }
+.steps b { display: block; margin-bottom: 2px; }
+.steps p { margin: 0; color: var(--muted); }
+.copy { display: inline-flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+code { font: 14px/1.4 var(--mono); background: var(--night); border: 1px solid var(--line); padding: 6px 10px; border-radius: 8px; color: var(--text); word-break: break-all; }
+.keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px 24px; margin-top: 28px; padding: 24px; }
+.keys div { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 15px; }
+kbd { font: 600 13px/1 var(--mono); color: var(--text); background: var(--night-3); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px; padding: 4px 7px; white-space: nowrap; }
+
+/* Help and FAQ */
+details { border-bottom: 1px solid var(--line); }
+details:first-child { border-top: 1px solid var(--line); }
+summary { cursor: pointer; list-style: none; padding: 18px 36px 18px 0; font-weight: 600; position: relative; }
+summary::-webkit-details-marker { display: none; }
+summary::after { content: "+"; position: absolute; right: 4px; top: 14px; font-size: 24px; color: var(--violet-2); transition: transform .2s var(--ease-out); }
+details[open] summary::after { transform: rotate(45deg); }
+details > div { padding: 0 0 20px; color: var(--muted); }
+details p { margin: 0 0 10px; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; }
+@media (max-width: 880px) { .two { grid-template-columns: 1fr; gap: 0; } }
+
+/* Open source + CTA */
+.oss { padding: 32px; display: flex; gap: 28px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.oss p { margin: 0; color: var(--muted); max-width: 40em; }
+.cta { text-align: center; padding: 88px 0; }
+.cta img { width: 80px; height: 80px; border-radius: 20px; margin-bottom: 18px; }
+.cta .cta-row { justify-content: center; }
+footer { border-top: 1px solid var(--line); padding: 28px 0 40px; color: var(--dim); font-size: 14px; }
+footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+footer nav { display: flex; gap: 18px; flex-wrap: wrap; }
+footer a { color: var(--muted); text-decoration: none; }
+footer a:hover { color: var(--text); }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px); opacity: 0; pointer-events: none; background: var(--night-3); border: 1px solid var(--line); padding: 12px 18px; border-radius: 12px; transition: opacity .2s, transform .25s var(--ease-out); max-width: calc(100% - 32px); }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header>
+  <div class="wrap bar">
+    <a class="brand" href="/"><img src="/assets/icon.png" alt="" width="30" height="30">Keyshift</a>
+    <nav class="nav" aria-label="Main">
+      <a href="#try">Try it</a>
+      <a href="#features">Features</a>
+      <a href="#install">Install</a>
+      <a href="#help">Help</a>
+      <a href="https://github.com/JordanCampbellDesign/tone-shifter">GitHub</a>
+      <a class="btn primary small" href="/download">Download</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <div class="wrap hero">
+    <div>
+      <p class="eyebrow">Free Chrome extension</p>
+      <h1>Change the key and speed of any song in your browser</h1>
+      <p class="lede">Keyshift shifts the pitch and tempo of the audio in any tab. Loop the hard part, slow it down, and mute the vocals or bass to play along. Everything runs on your computer.</p>
+      <div class="cta-row">
+        <a class="btn primary" href="/download" id="dl">Download Keyshift</a>
+        <a class="btn ghost" href="#install">How to install</a>
+      </div>
+      <p class="meta" id="meta">Version <span data-version>1.0.0</span> · <span data-size>79 MB</span> · Chrome, Edge, Brave, or Arc</p>
+    </div>
+    <div class="shot">
+      <img src="/assets/popup.png" width="340" height="689" alt="Keyshift's popup with pitch at minus 2, tempo at 85 percent, the vocals stem turned off, and a loop set">
+    </div>
+  </div>
+
+  <section aria-labelledby="try">
+    <div class="wrap">
+      <h2 id="try">Try it here</h2>
+      <p class="sub">This short loop is made in your browser. Change the key and the tempo separately, and turn parts on or off. Keyshift does the same to real songs in any tab.</p>
+      <div class="card demo">
+        <button class="play" type="button" id="play" aria-label="Play the demo loop">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path id="play-path" d="M8 5v14l11-7z"/></svg>
+        </button>
+        <div class="controls">
+          <div class="ctl">
+            <label for="pitch">Pitch</label>
+            <input id="pitch" type="range" min="-12" max="12" step="1" value="0" aria-valuetext="0 semitones">
+            <output for="pitch" id="pitch-out">0</output>
+          </div>
+          <div class="ctl">
+            <label for="tempo">Tempo</label>
+            <input id="tempo" type="range" min="50" max="150" step="5" value="100" aria-valuetext="100 percent">
+            <output for="tempo" id="tempo-out">100%</output>
+          </div>
+          <div class="stems" role="group" aria-label="Parts">
+            <button class="stem" type="button" data-part="melody" aria-pressed="true">Melody</button>
+            <button class="stem" type="button" data-part="drums" aria-pressed="true">Drums</button>
+            <button class="stem" type="button" data-part="bass" aria-pressed="true">Bass</button>
+            <button class="stem" type="button" data-part="chords" aria-pressed="true">Chords</button>
+          </div>
+          <p class="hint" id="hint" aria-live="polite">Press play, then move the sliders.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="features" aria-labelledby="what">
+    <div class="wrap">
+      <h2 id="what">What Keyshift does</h2>
+      <p class="sub">It works on YouTube, SoundCloud, Bandcamp, Spotify, and almost any other site that plays sound.</p>
+      <div class="grid">
+        <div class="card feature">
+          <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg></div>
+          <h3>Change the key</h3>
+          <p>Shift up to 12 semitones up or down. Fine tune to 0.01 of a semitone for songs that aren't at A = 440 Hz.</p>
+        </div>
+        <div class="card feature">
+          <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M9 2h6"/></svg></div>
+          <h3>Change the speed</h3>
+          <p>Play from 25% to 250% speed without changing the key. Slow a fast solo down until you can hear every note.</p>
+        </div>
+        <div class="card feature">
+          <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg></div>
+          <h3>Loop and ramp up</h3>
+          <p>Set points A and B to repeat a section. Turn on the speed ramp and each pass gets a little faster until you reach full speed.</p>
+        </div>
+        <div class="card feature">
+          <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h10M4 17h6"/></svg></div>
+          <h3>Split into stems</h3>
+          <p>Separate a song into vocals, drums, bass, and other with the Demucs model. Turn any part off and play along with the rest.</p>
+        </div>
+        <div class="card feature">
+          <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div>
+          <h3>Private by design</h3>
+          <p>Audio never leaves your computer. There is no account, no server, and no tracking.</p>
+        </div>
+        <div class="card feature">
+          <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg></div>
+          <h3>Keyboard first</h3>
+          <p>Change pitch and tempo without touching the mouse. It remembers your settings for each page.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="install" aria-labelledby="how">
+    <div class="wrap">
+      <h2 id="how">How to install</h2>
+      <p class="sub">Keyshift isn't in the Chrome Web Store yet, so you add it by hand. It takes about a minute.</p>
+      <ol class="steps">
+        <li class="card"><div><b>Download and unzip</b><p><a href="/download">Download the zip</a>, then double-click it to unzip. Move the <code>keyshift-1.0.0</code> folder somewhere it can stay, like Documents. Chrome loads it from there.</p></div></li>
+        <li class="card"><div><b>Open the extensions page</b><p>Copy this address into Chrome's address bar and press Enter. Websites can't link to it directly.</p>
+          <div class="copy"><code id="ext-url" tabindex="0">chrome://extensions</code><button class="btn ghost small" type="button" data-copy="ext-url">Copy</button></div></div></li>
+        <li class="card"><div><b>Turn on Developer mode</b><p>Use the switch in the top right corner of the extensions page.</p></div></li>
+        <li class="card"><div><b>Load the folder</b><p>Click <b style="display:inline">Load unpacked</b> and choose the folder you unzipped.</p></div></li>
+        <li class="card"><div><b>Pin it and play</b><p>Click the puzzle piece in the toolbar and pin Keyshift. Play a song in any tab, then click the Keyshift icon.</p></div></li>
+      </ol>
+      <div class="card keys" aria-label="Keyboard shortcuts">
+        <div><span>Pitch up or down</span><span><kbd>↑</kbd> <kbd>↓</kbd></span></div>
+        <div><span>Fine tune</span><span><kbd>⇧↑</kbd> <kbd>⇧↓</kbd></span></div>
+        <div><span>Tempo down or up</span><span><kbd>[</kbd> <kbd>]</kbd></span></div>
+        <div><span>Play or pause</span><span><kbd>Space</kbd></span></div>
+        <div><span>Loop points</span><span><kbd>A</kbd> <kbd>B</kbd></span></div>
+        <div><span>Reset everything</span><span><kbd>R</kbd></span></div>
+        <div><span>Pitch, any tab</span><span><kbd>⌥↑</kbd> <kbd>⌥↓</kbd></span></div>
+        <div><span>Tempo, any tab</span><span><kbd>⌥,</kbd> <kbd>⌥.</kbd></span></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="help" aria-labelledby="fix">
+    <div class="wrap two">
+      <div>
+        <h2 id="fix">If something goes wrong</h2>
+        <p class="sub">Fixes for the problems people run into most.</p>
+      </div>
+      <div>
+        <details><summary>The popup says Keyshift can't run on this page</summary><div><p>Chrome doesn't let extensions touch its own pages, like <code>chrome://</code> pages, the new tab page, and the Chrome Web Store. Open the song in a normal tab and try again.</p></div></details>
+        <details><summary>Tempo, loop, or play controls say "Not available"</summary><div><p>That site doesn't use a standard audio or video player, so Keyshift can't control playback. Pitch still works. Tempo can still go down to slow the audio, and Resync catches it back up to live.</p><p>For stems on these sites, click <b>Record</b>, play the part you want, then click <b>Stop</b>.</p></div></details>
+        <details><summary>The audio is behind or out of sync</summary><div><p>This happens when a site has no standard player and you slow the tempo. Press the Resync button (where play usually is) to jump back to live.</p></div></details>
+        <details><summary>Stem separation fails or takes a long time</summary><div><p>The first separation loads a 75 MB model, and a four-minute song can take a few minutes on a laptop. Close other heavy tabs and try again. After that, the same song opens right away from the cache.</p><p>If <b>Separate</b> fails on a site, use <b>Record</b> instead.</p></div></details>
+        <details><summary>Keyshift says the tab is already being captured</summary><div><p>Only one extension can capture a tab's audio at a time. Stop screen sharing or other audio extensions on that tab, then open Keyshift again.</p></div></details>
+        <details><summary>How do I update?</summary><div><p>Download the new zip, replace the old folder with the new one, then click the reload arrow on the Keyshift card at <code>chrome://extensions</code>. Your settings stay.</p></div></details>
+      </div>
+    </div>
+  </section>
+
+  <section id="faq" aria-labelledby="q">
+    <div class="wrap two">
+      <div><h2 id="q">Questions</h2></div>
+      <div>
+        <details><summary>Is it really free?</summary><div><p>Yes. There's no paid tier, no account, and no ads. The code is MIT licensed on GitHub.</p></div></details>
+        <details><summary>Does Keyshift upload my audio?</summary><div><p>No. Pitch shifting and stem separation run in your browser. The only download Keyshift makes is the song file itself, from the site you're on, when you click Separate. It asks for access to that one site first.</p></div></details>
+        <details><summary>Which browsers work?</summary><div><p>Chrome 116 or later, and other Chromium browsers like Edge, Brave, and Arc. Safari and Firefox aren't supported.</p></div></details>
+        <details><summary>Why isn't it in the Chrome Web Store?</summary><div><p>It isn't listed yet. Until it is, you install it with Load unpacked, which gives you the same extension.</p></div></details>
+        <details><summary>What does "stems" mean?</summary><div><p>A stem is one part of a song, like the vocals or the drums. Keyshift uses the Demucs model from Meta AI Research to split a song into four: vocals, drums, bass, and everything else.</p></div></details>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="oss">
+    <div class="wrap">
+      <div class="card oss">
+        <div>
+          <h2 id="oss">Free and open source</h2>
+          <p>Read the code, report a site that doesn't work, or send a fix. Keyshift uses SoundTouch for pitch shifting and Demucs for stems.</p>
+        </div>
+        <a class="btn ghost" href="https://github.com/JordanCampbellDesign/tone-shifter">View on GitHub</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta" aria-labelledby="go">
+    <div class="wrap">
+      <img src="/assets/icon.png" alt="" width="80" height="80">
+      <h2 id="go">Play along in your own key</h2>
+      <p class="sub" style="margin:0 auto 28px">Free for Chrome, Edge, Brave, and Arc.</p>
+      <div class="cta-row"><a class="btn primary" href="/download">Download Keyshift</a></div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Keyshift by <a href="https://github.com/JordanCampbellDesign">Jordan Campbell</a>. MIT license.</span>
+    <nav aria-label="Footer">
+      <a href="https://github.com/JordanCampbellDesign/tone-shifter">GitHub</a>
+      <a href="https://github.com/JordanCampbellDesign/tone-shifter/releases">Releases</a>
+      <a href="https://github.com/JordanCampbellDesign/tone-shifter/issues/new/choose">Report a problem</a>
+      <a href="https://github.com/JordanCampbellDesign/tone-shifter/blob/main/SECURITY.md">Security</a>
+    </nav>
+  </div>
+</footer>
+
+<p class="toast" id="toast" role="status"></p>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (s) => document.querySelector(s);
+  const toast = (msg) => {
+    const t = $("#toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(toast.timer);
+    toast.timer = setTimeout(() => t.classList.remove("show"), 2600);
+  };
+
+  // Version label from the latest GitHub release.
+  fetch("/download?info=1").then((r) => (r.ok ? r.json() : null)).then((info) => {
+    if (!info || !info.version) return;
+    document.querySelectorAll("[data-version]").forEach((el) => (el.textContent = info.version));
+    document.querySelectorAll("[data-size]").forEach((el) => (el.textContent = Math.round(info.size / 1e6) + " MB"));
+    document.querySelectorAll("code").forEach((el) => (el.textContent = el.textContent.replace("keyshift-1.0.0", "keyshift-" + info.version)));
+  }).catch(() => {});
+
+  document.querySelectorAll("[data-copy]").forEach((btn) => btn.addEventListener("click", async () => {
+    const text = document.getElementById(btn.dataset.copy).textContent;
+    try { await navigator.clipboard.writeText(text); toast("Copied. Paste it into the address bar."); }
+    catch { toast("Select the address and copy it."); }
+  }));
+
+  // ── Demo loop ──
+  // A 2-bar loop built from oscillators. Pitch multiplies every frequency; tempo only changes timing,
+  // so the two move independently, which is what Keyshift does to real audio.
+  const pitch = $("#pitch"), tempo = $("#tempo"), play = $("#play"), hint = $("#hint");
+  const parts = { melody: true, drums: true, bass: true, chords: true };
+  let ctx = null, master = null, noise = null, timer = null, step = 0, nextTime = 0, playing = false;
+
+  const MELODY = [72, null, 76, 79, 81, null, 79, 76, 74, null, 76, 72, 74, null, null, null,
+                  72, null, 76, 79, 84, null, 83, 79, 81, null, 79, 76, 72, null, null, null];
+  const BASS = [48, null, null, 48, 55, null, null, null, 45, null, null, 45, 52, null, null, null,
+                41, null, null, 41, 48, null, null, null, 43, null, null, 43, 50, null, 47, null];
+  const CHORDS = { 0: [60, 64, 67], 8: [57, 60, 64], 16: [53, 57, 60], 24: [55, 59, 62] };
+  const KICK = [0, 6, 8, 16, 22, 24, 28], SNARE = [4, 12, 20, 28];
+
+  const hz = (m) => 440 * Math.pow(2, (m - 69 + Number(pitch.value)) / 12);
+  const stepDur = () => 60 / (104 * Number(tempo.value) / 100) / 4;
+
+  function tone(midi, t, dur, type, gain, cutoff) {
+    const o = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter();
+    o.type = type; o.frequency.value = hz(midi);
+    f.type = "lowpass"; f.frequency.value = cutoff;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(f).connect(g).connect(master);
+    o.start(t); o.stop(t + dur + 0.05);
+  }
+  function kick(t) {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.setValueAtTime(140, t);
+    o.frequency.exponentialRampToValueAtTime(45, t + 0.12);
+    g.gain.setValueAtTime(0.9, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
+    o.connect(g).connect(master); o.start(t); o.stop(t + 0.3);
+  }
+  function hit(t, dur, freq, gain) {
+    const s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    s.buffer = noise; f.type = "highpass"; f.frequency.value = freq;
+    g.gain.setValueAtTime(gain, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    s.connect(f).connect(g).connect(master); s.start(t); s.stop(t + dur);
+  }
+  function schedule() {
+    while (nextTime < ctx.currentTime + 0.12) {
+      const d = stepDur(), i = step % 32;
+      if (parts.melody && MELODY[i] != null) tone(MELODY[i], nextTime, d * 1.8, "square", 0.07, 2600);
+      if (parts.bass && BASS[i] != null) tone(BASS[i], nextTime, d * 2.5, "triangle", 0.3, 900);
+      if (parts.chords && CHORDS[i]) CHORDS[i].forEach((m) => tone(m, nextTime, d * 7, "sawtooth", 0.035, 1400));
+      if (parts.drums) {
+        if (KICK.includes(i)) kick(nextTime);
+        if (SNARE.includes(i)) hit(nextTime, 0.16, 1800, 0.35);
+        if (i % 2 === 0) hit(nextTime, 0.04, 7000, 0.12);
+      }
+      nextTime += d; step++;
+    }
+  }
+  function start() {
+    if (!ctx) {
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      master = ctx.createGain(); master.gain.value = 0.55; master.connect(ctx.destination);
+      noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      const data = noise.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+    }
+    ctx.resume();
+    step = 0; nextTime = ctx.currentTime + 0.05;
+    timer = setInterval(schedule, 25); schedule();
+    playing = true;
+    play.setAttribute("aria-label", "Pause the demo loop");
+    $("#play-path").setAttribute("d", "M6 19h4V5H6v14zm8-14v14h4V5h-4z");
+    hint.textContent = "Try pitch -2 and tempo 75%, then turn off the melody.";
+  }
+  function stop() {
+    clearInterval(timer); playing = false;
+    if (ctx) ctx.suspend();
+    play.setAttribute("aria-label", "Play the demo loop");
+    $("#play-path").setAttribute("d", "M8 5v14l11-7z");
+  }
+  play.addEventListener("click", () => (playing ? stop() : start()));
+
+  function fill(input) {
+    const p = ((input.value - input.min) / (input.max - input.min)) * 100;
+    input.style.setProperty("--p", p + "%");
+  }
+  pitch.addEventListener("input", () => {
+    const v = Number(pitch.value), txt = (v > 0 ? "+" : "") + v;
+    $("#pitch-out").textContent = txt;
+    pitch.setAttribute("aria-valuetext", txt + " semitones");
+    fill(pitch);
+  });
+  tempo.addEventListener("input", () => {
+    $("#tempo-out").textContent = tempo.value + "%";
+    tempo.setAttribute("aria-valuetext", tempo.value + " percent");
+    fill(tempo);
+  });
+  document.querySelectorAll(".stem").forEach((btn) => btn.addEventListener("click", () => {
+    const on = btn.getAttribute("aria-pressed") !== "true";
+    btn.setAttribute("aria-pressed", String(on));
+    parts[btn.dataset.part] = on;
+  }));
+  fill(pitch); fill(tempo);
+})();
+</script>
+</body>
+</html>
