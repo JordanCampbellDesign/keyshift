@@ -179,7 +179,7 @@ function tempoPct() {
 function resetAll() {
     setPitch(0);
     setTune(0);
-    if (hasMedia() || tempoPct() !== 100) setTempoPct(100);
+    setTempoPct(100);
 }
 
 // ─── Rendering ───
@@ -206,7 +206,7 @@ function renderControls() {
 
     setDisabled(groups.pitch, !connected);
     setDisabled(groups.tune, !connected);
-    setDisabled(groups.tempo, !media);
+    setDisabled(groups.tempo, !connected);
     setDisabled(groups.loop, !media);
     setDisabled(groups.ramp, !media);
     setDisabled(el.transport, !media);
@@ -461,11 +461,20 @@ function onMessage(msg) {
     }
 }
 
+const RECONNECT_DELAY_MS = 100;
+let closing = false;
+
+// The service worker can stop at any time, which drops the port. Reconnect so
+// commands are not lost; the background answers with fresh state on connect.
 function connect() {
     port = chrome.runtime.connect({name: 'ks-popup'});
     port.onMessage.addListener(onMessage);
     port.onDisconnect.addListener(() => {
         port = null;
+        if (closing) return;
+        restoreStarted = false;
+        restoreChecked = false;
+        setTimeout(connect, RECONNECT_DELAY_MS);
     });
 }
 
@@ -499,6 +508,7 @@ el.tempoSlider.step = '1';
 
 el.disconnect.addEventListener('click', () => {
     send('disconnect');
+    closing = true;
     // Give the port a moment to deliver the message before the popup closes.
     setTimeout(() => window.close(), 100);
 });
@@ -603,10 +613,10 @@ document.addEventListener('keydown', (ev) => {
             else setPitch(state.pitch - 1);
             break;
         case '[':
-            if (media) setTempoPct(tempoPct() - TEMPO_KEY_STEP);
+            setTempoPct(tempoPct() - TEMPO_KEY_STEP);
             break;
         case ']':
-            if (media) setTempoPct(tempoPct() + TEMPO_KEY_STEP);
+            setTempoPct(tempoPct() + TEMPO_KEY_STEP);
             break;
         case ' ':
             if (media) send('toggle-play');

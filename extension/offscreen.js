@@ -21,20 +21,18 @@ let isRecording = false;
 
 async function startCapture(streamId, settings) {
     _log('startCapture, media:', settings.media);
-    audioContext = new AudioContext({sampleRate: 44100});
-
-    await audioContext.audioWorklet.addModule('pitch-shifter-processor.js');
-    pitchShifterNode = new AudioWorkletNode(audioContext, 'pitch-shifter-processor', {
-        outputChannelCount: [2]
-    });
-
-    if (settings.media) {
-        pitchShifterNode.port.postMessage({hasMedia: true});
-    } else {
-        pitchShifterNode.port.postMessage({hasMedia: false});
-    }
+    // Always tear down an old graph first.
+    stopCapture();
 
     try {
+        audioContext = new AudioContext({sampleRate: 44100});
+
+        await audioContext.audioWorklet.addModule('pitch-shifter-processor.js');
+        pitchShifterNode = new AudioWorkletNode(audioContext, 'pitch-shifter-processor', {
+            outputChannelCount: [2]
+        });
+        pitchShifterNode.port.postMessage({hasMedia: !!settings.media});
+
         stream = await navigator.mediaDevices.getUserMedia({
             audio: {
                 mandatory: {
@@ -54,12 +52,24 @@ async function startCapture(streamId, settings) {
         chrome.runtime.sendMessage({type: 'offscreen-ready', settings: settings});
     } catch (err) {
         _err('capture error:', err.message);
+        stopCapture();
         chrome.runtime.sendMessage({type: 'offscreen-capture-failure'});
     }
 }
 
 function stopCapture() {
     _log('stopCapture');
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.onstop = null;
+        try { mediaRecorder.stop(); } catch (_) {}
+    }
+    mediaRecorder = null;
+    isRecording = false;
+    recordingChunks = [];
+    if (recordingDestination && mediaStreamSource) {
+        try { mediaStreamSource.disconnect(recordingDestination); } catch (_) {}
+    }
+    recordingDestination = null;
     if (stream) {
         stream.getAudioTracks().forEach(t => t.stop());
         stream = null;
@@ -71,7 +81,7 @@ function stopCapture() {
     stemModeActive = false;
     mediaStreamSource = null;
     if (audioContext) {
-        audioContext.suspend();
+        audioContext.close().catch(() => {});
         audioContext = null;
     }
     pitchShifterNode = null;
@@ -116,13 +126,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             }
             break;
         case 'stem-separate':
-            handleStemSeparate(msg);
+            handleStemSeparate(msg).catch((err) => sendStemError(err.message || 'Separation failed'));
             break;
         case 'stem-toggle':
             handleStemToggle(msg.stem);
             break;
         case 'stem-activate':
-            handleStemActivate(msg.url);
+            handleStemActivate(msg.url).catch((err) => sendStemError(err.message || 'Could not play stems'));
             break;
         case 'stem-deactivate':
             handleStemDeactivate();
@@ -167,9 +177,26 @@ function startRecording() {
     chrome.runtime.sendMessage({ target: 'background', type: 'stem-recording-started' });
 }
 
+function sendStemError(message) {
+    chrome.runtime.sendMessage({ target: 'background', type: 'stem-error', message });
+}
+
 async function stopRecording(title, tabId) {
-    if (!isRecording) return;
+    if (!isRecording) {
+        sendStemError('No recording in progress');
+        return;
+    }
     isRecording = false;
+    try {
+        await finishRecording(title, tabId);
+    } catch (err) {
+        _err('stopRecording failed:', err.message);
+        recordingChunks = [];
+        sendStemError(err.message || 'Recording failed');
+    }
+}
+
+async function finishRecording(title, tabId) {
 
     // Stop MediaRecorder and wait for final data
     const recordingDone = new Promise(resolve => {

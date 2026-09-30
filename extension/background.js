@@ -13,6 +13,8 @@ const TEMPO_MAX_NO_MEDIA = 1;
 const CONTENT_TIMEOUT_MS = 3500;
 const STOP_WAIT_MS = 250;
 const SESSION_KEY = 'ksSession';
+const CAPTURE_TIMEOUT_MS = 8000;
+const STEM_STALE_MS = 15 * 60 * 1000;
 
 const BLOCKED_URL_PREFIXES = [
     'chrome://', 'chrome-extension://', 'edge://', 'about:', 'file://', 'view-source:', 'devtools://',
@@ -47,7 +49,7 @@ function newTabState(tabId, url) {
 }
 
 function newStemState() {
-    return {phase: 'idle', progress: 0, stage: '', url: null, active: false, states: {}, message: ''};
+    return {phase: 'idle', progress: 0, stage: '', url: null, active: false, states: {}, message: '', updatedAt: Date.now()};
 }
 
 // The worker can be stopped at any time, so keep the captured tab in session storage.
@@ -155,6 +157,9 @@ function applyMediaState(m) {
         tab.loopB = m.loopB;
         tab.src = m.src || null;
     } else {
+        tab.paused = true;
+        tab.currentTime = 0;
+        tab.duration = 0;
         tab.src = null;
         tab.loopA = null;
         tab.loopB = null;
@@ -174,6 +179,17 @@ async function refreshMedia() {
     if (!tab) return;
     const m = await toContent(tab.tabId, 'get-state', null, CONTENT_TIMEOUT_MS);
     if (m) applyMediaState(m);
+}
+
+// Without a content script the page can't be controlled, so tempo goes through offscreen.
+async function reattachContent() {
+    if (!tab) return;
+    if (await injectContent(tab.tabId)) {
+        toContent(tab.tabId, 'report', {on: true});
+        await refreshMedia();
+    } else {
+        applyMediaState({hasMedia: false});
+    }
 }
 
 // ─── Capture ───
@@ -210,10 +226,20 @@ async function startCapture(target) {
         const streamId = await chrome.tabCapture.getMediaStreamId({targetTabId: target.id});
         await toOffscreen('start-capture', {streamId, settings: {media: tab.hasMedia}});
         sendState({fresh: true});
+        const startTime = startedAt;
+        setTimeout(() => {
+            if (starting && startedAt === startTime) {
+                warn('capture timed out');
+                onCaptureFailure();
+            }
+        }, CAPTURE_TIMEOUT_MS);
     } catch (err) {
         warn('capture failed:', err.message);
         starting = false;
+        tab = null;
+        persist();
         postPopup({kind: 'error', message: 'Could not capture audio in this tab.'});
+        sendState();
     }
 }
 
@@ -230,7 +256,8 @@ function onCaptureReady() {
 
 function onCaptureFailure() {
     starting = false;
-    if (tab) tab.connected = false;
+    tab = null;
+    persist();
     postPopup({kind: 'error', message: 'Could not capture audio in this tab.'});
     sendState();
 }
@@ -249,24 +276,43 @@ async function forgetTab(resetPage) {
     sendState();
 }
 
+function clearStaleStem() {
+    const stem = tab && tab.stem;
+    if (stem && stem.phase === 'working' && Date.now() - (stem.updatedAt || 0) > STEM_STALE_MS) {
+        tab.stem = newStemState();
+        persist();
+    }
+}
+
 async function onPopupConnect() {
     await loaded;
-    if (tab) {
+    // A capture is already starting: just show it, don't start a second one.
+    if (starting && tab) {
+        sendState();
+        return;
+    }
+
+    const [active] = await chrome.tabs.query({active: true, currentWindow: true});
+    const activeOk = !!active && !isBlockedUrl(active.url);
+
+    if (tab && tab.connected) {
         const exists = await chrome.tabs.get(tab.tabId).catch(() => null);
-        if (exists && await offscreenExists()) {
+        const sameTab = !activeOk || active.id === tab.tabId;
+        if (exists && sameTab && await offscreenExists()) {
             tab.url = exists.url || tab.url;
-            await injectContent(tab.tabId);
-            toContent(tab.tabId, 'report', {on: true});
-            await refreshMedia();
+            clearStaleStem();
+            await reattachContent();
             sendState();
             return;
         }
+        // The popup opened on another page, so release the old tab.
+        await forgetTab(!!exists);
+    } else if (tab) {
         tab = null;
         persist();
     }
 
-    const [active] = await chrome.tabs.query({active: true, currentWindow: true});
-    if (!active || isBlockedUrl(active.url)) {
+    if (!activeOk) {
         postPopup({kind: 'unsupported'});
         return;
     }
@@ -359,6 +405,7 @@ async function onPopupCommand(msg) {
             tab.stem.phase = 'working';
             tab.stem.stage = 'processing';
             tab.stem.progress = 0;
+            tab.stem.updatedAt = Date.now();
             toOffscreen('stem-record-stop', {title: tab.title, tabId});
             break;
         case 'stem-toggle':
@@ -403,6 +450,7 @@ function onStemMessage(msg) {
     if (!tab) return;
     if (msg.tabId != null && msg.tabId !== tab.tabId) return;
     const stem = tab.stem;
+    stem.updatedAt = Date.now();
 
     switch (msg.type) {
         case 'stem-progress':
@@ -509,13 +557,13 @@ chrome.tabs.onUpdated.addListener(async (tabId, info, updated) => {
     if (!tab || tab.tabId !== tabId || info.status !== 'complete') return;
     // A navigation removes the content script, so put it back.
     tab.url = updated.url || tab.url;
-    if (isBlockedUrl(tab.url)) return;
-    if (await injectContent(tabId)) {
-        toContent(tabId, 'report', {on: true});
-        await refreshMedia();
-        applyTempo();
-        sendState();
+    if (isBlockedUrl(tab.url)) {
+        applyMediaState({hasMedia: false});
+    } else {
+        await reattachContent();
     }
+    applyTempo();
+    sendState();
 });
 
 chrome.tabCapture.onStatusChanged.addListener(async (info) => {
