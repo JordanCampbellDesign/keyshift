@@ -18,7 +18,7 @@ Use it to play along with a song in your own key, slow down a hard part to learn
 
 Keyshift needs Chrome 116 or later, or another Chromium browser (Edge, Brave, Arc).
 
-1. Download `keyshift-<version>.zip` from the [website](https://keyshift-extension.vercel.app/download) or the [latest release](https://github.com/JordanCampbellDesign/tone-shifter/releases/latest) and unzip it.
+1. Download `keyshift-<version>.zip` from the [website](https://keyshift-extension.vercel.app/download) or the [latest release](https://github.com/JordanCampbellDesign/keyshift/releases/latest) and unzip it.
 2. Open `chrome://extensions` and turn on **Developer mode** (top right).
 3. Click **Load unpacked** and choose the unzipped folder.
 4. Pin Keyshift from the puzzle-piece menu so its icon stays in the toolbar.
@@ -82,7 +82,7 @@ Keyshift has no server and no analytics. Audio stays on your computer. The only 
 ## Build from source
 
 ```bash
-git clone https://github.com/JordanCampbellDesign/tone-shifter.git
+git clone https://github.com/JordanCampbellDesign/keyshift.git
 ```
 
 The website lives in `site/` and deploys to Vercel.

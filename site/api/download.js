@@ -2,7 +2,7 @@
 // GET /download        -> 302 to the zip on GitHub
 // GET /download?info=1 -> {"version":"1.0.0","size":78937002,"url":"..."} for the page's version label
 // If GitHub is slow or down, people land on the release page instead of an error.
-const REPO = "JordanCampbellDesign/tone-shifter";
+const REPO = "JordanCampbellDesign/keyshift";
 const FALLBACK = `https://github.com/${REPO}/releases/latest`;
 
 async function latestZip() {
