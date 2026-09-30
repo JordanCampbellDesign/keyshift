@@ -1,0 +1,33 @@
+name: Site compatibility
+description: A site where pitch, tempo, loops, or stems don't work.
+labels: [site]
+body:
+  - type: input
+    id: site
+    attributes:
+      label: Site
+      placeholder: youtube.com
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and version
+      placeholder: Chrome 141 on macOS 26
+    validations:
+      required: true
+  - type: dropdown
+    id: feature
+    attributes:
+      label: What doesn't work
+      multiple: true
+      options: [Pitch, Tempo, Loop, Stem separation, Recording, Keyboard shortcuts]
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: What works and what doesn't
+      description: For example, pitch works but the popup says "Not available" for tempo.
+    validations:
+      required: true

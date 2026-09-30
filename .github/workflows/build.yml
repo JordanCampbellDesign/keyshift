@@ -1,0 +1,21 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check scripts and manifest
+        run: scripts/check.sh
+      - name: Package the extension
+        run: scripts/package.sh
+      - name: Upload the zip
+        uses: actions/upload-artifact@v7
+        with:
+          name: keyshift-extension
+          path: dist/*.zip

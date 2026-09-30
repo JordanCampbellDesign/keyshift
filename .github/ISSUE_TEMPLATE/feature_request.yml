@@ -1,0 +1,11 @@
+name: Feature request
+description: Suggest something Keyshift should do.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: Describe the problem first, then the change you'd like.
+    validations:
+      required: true

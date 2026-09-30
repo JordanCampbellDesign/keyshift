@@ -1,0 +1,24 @@
+name: Bug report
+description: Something in Keyshift doesn't work as expected.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Keyshift and browser versions
+      placeholder: Keyshift 1.0.0 on Chrome 141, macOS 26
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console output
+      description: Lines tagged [KS:bg], [KS:content], [KS:popup], or [KS:offscreen]. CONTRIBUTING.md says where to find them.
+      render: text
